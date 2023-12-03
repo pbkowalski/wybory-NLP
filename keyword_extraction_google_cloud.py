@@ -8,25 +8,18 @@ from google.cloud.sql.connector import Connector
 from google.auth import compute_engine
 import pymysql.cursors
 from dotenv import load_dotenv
+import re 
 
 load_dotenv()
 
-
-
-
-
-
-
+credentials = compute_engine.Credentials()
 #Initialize GC Storage
 storage_client = storage.Client()
 bucket_name = os.getenv("Google_cloud_bucket_name")
 bucket = storage_client.bucket(bucket_name)
-#Get list of relevant files in GC Storage
-blobs = [blob for blob in bucket.list_blobs() if "posiedzenie" in blob.name and blob.name.endswith(".json")]
 
 
 # Create a Google Cloud SQL connection using a service account
-credentials = compute_engine.Credentials()
 connector = Connector()
 conn = connector.connect(instance_connection_string=os.getenv("Google_cloud_connection_name"), 
                             db=os.getenv("database_name"),
@@ -39,7 +32,7 @@ conn = connector.connect(instance_connection_string=os.getenv("Google_cloud_conn
 cursor = conn.cursor()
 
 #Langchain setup
-llm_chain = None
+
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size = 800,
@@ -62,7 +55,6 @@ def start_llm_chain():
     llm_chain = LLMChain(prompt=prompt, llm=llm)
     return llm_chain
 
-
 def extract_keywords(tekst, llm_chain):
     texts = text_splitter.create_documents([tekst])
     responses = []
@@ -81,12 +73,11 @@ Słowa kluczowe: gospodarka, finanse, bezrobocie, mafia VAT-owska </s>
 <s>[INST]Dokument: {question} [/INST]
 Słowa kluczowe:
 """
-
 prompt = PromptTemplate(template=template, input_variables=["question"])
 
-
-
-
+llm_chain = start_llm_chain()
+#Get list of relevant files in GC Storage
+blobs = [blob for blob in bucket.list_blobs() if "posiedzenie" in blob.name and blob.name.endswith(".json")]
 for blob in blobs:
     #load json from Google Cloud Storage
     posiedzenie = json.loads(blob.download_as_string())
@@ -101,7 +92,7 @@ for blob in blobs:
             print(f"Posiedzenie {nr_posiedzenia}, przemowienie {nr_wypowiedzi}")
             kwords = extract_keywords(przemowienie['tekst'], llm_chain)
             print(f"Response: {kwords}")
-            keywords = ','.join(keywords)
+            keywords = ','.join(kwords)
             kw_as_list = keywords.split(',')
             kw_cleaned = [re.sub(r'[^\w\s]','',x.replace('\\n','')).strip()  for x in kw_as_list if re.search('\w{4,}',x)]
             dict_repr['keywords'] = ','.join(kw_cleaned)
@@ -109,11 +100,8 @@ for blob in blobs:
             values = tuple(dict_repr.values())
             insert_query = f"INSERT INTO {table_name} ({columns}) VALUES"
             insert_query = insert_query + " (" + "%s,"*(len(values)-1) + "%s)"
+            print(f"Cleaned keywords: {','.join(kw_cleaned)}")
             print(insert_query)
             cursor.execute(insert_query, values )
 
-
-
-
-
-db.close()
+conn.close()
