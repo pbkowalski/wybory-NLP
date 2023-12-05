@@ -71,8 +71,7 @@ Słowa kluczowe: służba zdrowia, ubóstwo, kłamstwa, exposé, afery </s>
 <s>[INST]Dokument: Jacka Rostowskiego ze słynnym: na te obietnice, które składa Prawo i Sprawiedliwość, pieniędzy nie ma i w ciągu 4 najbliższych lat nie będzie, czy też samego Donalda Tuska: jeżeli ktoś wie, gdzie leżą zakopane w Polsce miliardy, które można porozdawać ludziom, to nie powinien z tym zwlekać.Z tego miejsca odpowiem panu premierowi Tuskowi. Tymi osobami, które wiedziały, gdzie nie są zakopane, ale ukradzione przez mafie VAT-owskie pieniądze, byli pan prezes Jarosław Kaczyński oraz pan premier Mateusz Morawiecki.Również minister Banaś, tak jest.Ale oczywiście o sukcesach polskiej gospodarki świadczy nie tylko wzrost przychodów budżetowych. Wszak do woli możemy żonglować wskaźnikami finansowymi i gospodarczymi. Bezrobocie z poziomu 8% w 2015 r. zjechało do 3,3% według najnowszych danych[/INST]
 Słowa kluczowe: gospodarka, finanse, bezrobocie, mafia VAT-owska </s>
 <s>[INST]Dokument: {question} [/INST]
-Słowa kluczowe:
-"""
+Słowa kluczowe:"""
 prompt = PromptTemplate(template=template, input_variables=["question"])
 
 llm_chain = start_llm_chain()
@@ -84,10 +83,29 @@ for blob in blobs:
     nr_posiedzenia = int(blob.name.split('/')[-1].split("_")[1].split(".")[0])
     #get table name from blob name
     table_name = f"posiedzenie{nr_posiedzenia}"
+    #create table if it does not exist
+    headers = posiedzenie[0].keys()
+    types = ["CHAR(10)","TEXT", "TEXT", "TEXT", "TEXT", "TINYINT", "TINYINT", "SMALLINT", "TEXT"]
+    typesdict = {list(headers)[i]:types[i] for i in range(len(headers))}
+    create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ("
+    for col in headers:
+        col_name = col
+        col_type = typesdict[col]
+        create_table_sql += f"{col_name} {col_type}, "
+    create_table_sql = create_table_sql.rstrip(', ') + ");"
+    cursor.execute(create_table_sql)
+    #get all sppeches already in database
+    rows = []
+    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'posiedzenia' AND table_name NOT LIKE 'entries';")
+    tables = cursor.fetchall()
+    for table in tables:
+        cursor.execute(f"SELECT posiedzenie, nr_wypowiedzi, dzien FROM {table['TABLE_NAME']}")
+        rows.extend(cursor.fetchall())
+    #iterate over speeches in session
     for przemowienie in posiedzenie:
         nr_wypowiedzi = przemowienie['nr_wypowiedzi']
         #check if already in database
-        if not cursor.execute("SELECT * FROM {table_name} WHERE nr_wypowiedzi = {id}".format(table_name=table_name, id=nr_wypowiedzi)):
+        if not [d for d in rows if d['posiedzenie'] == przemowienie['posiedzenie'] and d['nr_wypowiedzi'] == przemowienie['nr_wypowiedzi'] and d['dzien'] == przemowienie['dzien']]: 
             dict_repr = przemowienie.copy()
             print(f"Posiedzenie {nr_posiedzenia}, przemowienie {nr_wypowiedzi}")
             kwords = extract_keywords(przemowienie['tekst'], llm_chain)
@@ -101,7 +119,7 @@ for blob in blobs:
             insert_query = f"INSERT INTO {table_name} ({columns}) VALUES"
             insert_query = insert_query + " (" + "%s,"*(len(values)-1) + "%s)"
             print(f"Cleaned keywords: {','.join(kw_cleaned)}")
-            print(insert_query)
+            #print(insert_query)
             cursor.execute(insert_query, values )
 
 conn.close()
