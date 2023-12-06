@@ -84,7 +84,9 @@ for blob in blobs:
     #get table name from blob name
     table_name = f"posiedzenie{nr_posiedzenia}"
     #create table if it does not exist
-    headers = posiedzenie[0].keys()
+    headers = list(posiedzenie[0].keys())
+    if 'keywords' not in headers:
+        headers.append('keywords')
     types = ["CHAR(10)","TEXT", "TEXT", "TEXT", "TEXT", "TINYINT", "TINYINT", "SMALLINT", "TEXT"]
     typesdict = {list(headers)[i]:types[i] for i in range(len(headers))}
     create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ("
