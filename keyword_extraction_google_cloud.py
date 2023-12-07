@@ -1,6 +1,8 @@
 import json
 from langchain.llms import LlamaCpp
-from langchain import PromptTemplate, LLMChain
+from langchain.llms import HuggingFaceEndpoint
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
 from google.cloud import storage
@@ -17,8 +19,9 @@ credentials = compute_engine.Credentials()
 storage_client = storage.Client()
 bucket_name = os.getenv("Google_cloud_bucket_name")
 bucket = storage_client.bucket(bucket_name)
-
-
+endpoint_url = os.getenv("Huggingface_endpoint_url")
+use_hf = os.getenv("use_hf_endpoint")
+#HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 # Create a Google Cloud SQL connection using a service account
 connector = Connector()
 conn = connector.connect(instance_connection_string=os.getenv("Google_cloud_connection_name"), 
@@ -43,15 +46,29 @@ text_splitter = RecursiveCharacterTextSplitter(
 
 #initialize llm_chain only when it is required
 def start_llm_chain():
-    llm = LlamaCpp(
-        model_path="../models/trurl-2-13b-instruct-q4_K_M.gguf",  
-        verbose=True,
-        temperature=0.5,
-        n_ctx=4096,
-        n_gpu_layers=30,
-        mlock = True,
-        stop = ['</s>'],
-    )
+    if use_hf == "True":
+        llm = HuggingFaceEndpoint(
+            endpoint_url=endpoint_url,
+            verbose=True,
+            task='text-generation',
+            model_kwargs = {
+             'temperature' : 0.5,
+             'stop' : ['</s>'],
+             'max_length': 250,
+             'max_new_tokens': 100
+             }
+        )
+    else:
+        llm = LlamaCpp(
+            model_path="../models/trurl-2-13b-instruct-q4_K_M.gguf",  
+            verbose=True,
+            temperature=0.5,
+            n_ctx=4096,
+            n_gpu_layers=30,
+            mlock = True,
+            stop = ['</s>'],
+        )
+    
     llm_chain = LLMChain(prompt=prompt, llm=llm)
     return llm_chain
 
@@ -77,6 +94,15 @@ prompt = PromptTemplate(template=template, input_variables=["question"])
 llm_chain = start_llm_chain()
 #Get list of relevant files in GC Storage
 blobs = [blob for blob in bucket.list_blobs() if "posiedzenie" in blob.name and blob.name.endswith(".json")]
+rows = []
+cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'posiedzenia' AND table_name NOT LIKE 'entries';")
+tables = cursor.fetchall()
+print("Querying database...")
+for table in tables:
+    cursor.execute(f"SELECT posiedzenie, nr_wypowiedzi, dzien FROM {table['TABLE_NAME']}")
+    rows.extend(cursor.fetchall())
+print(f"Querying yielded {len(rows)} speeches")
+
 for blob in blobs:
     #load json from Google Cloud Storage
     posiedzenie = json.loads(blob.download_as_string())
@@ -97,12 +123,7 @@ for blob in blobs:
     create_table_sql = create_table_sql.rstrip(', ') + ");"
     cursor.execute(create_table_sql)
     #get all sppeches already in database
-    rows = []
-    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'posiedzenia' AND table_name NOT LIKE 'entries';")
-    tables = cursor.fetchall()
-    for table in tables:
-        cursor.execute(f"SELECT posiedzenie, nr_wypowiedzi, dzien FROM {table['TABLE_NAME']}")
-        rows.extend(cursor.fetchall())
+
     #iterate over speeches in session
     for przemowienie in posiedzenie:
         nr_wypowiedzi = przemowienie['nr_wypowiedzi']
