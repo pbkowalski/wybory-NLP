@@ -130,7 +130,7 @@ for blob in blobs:
         #check if already in database
         if not [d for d in rows if d['posiedzenie'] == przemowienie['posiedzenie'] and d['nr_wypowiedzi'] == przemowienie['nr_wypowiedzi'] and d['dzien'] == przemowienie['dzien']]: 
             dict_repr = przemowienie.copy()
-            print(f"Posiedzenie {nr_posiedzenia}, przemowienie {nr_wypowiedzi}")
+            print(f"Posiedzenie {nr_posiedzenia}, dzien {przemowienie['dzien']}, przemowienie {nr_wypowiedzi}")
             kwords = extract_keywords(przemowienie['tekst'], llm_chain)
             print(f"Response: {kwords}")
             keywords = ','.join(kwords)
