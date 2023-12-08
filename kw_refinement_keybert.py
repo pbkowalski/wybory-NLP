@@ -114,6 +114,8 @@ out_table = 'sk_keybert_average'
 for table in tables:
     table_name = table['TABLE_NAME']
     rows = get_session(conn, table_name)
+    if not rows:
+        continue
     unique_keywords = get_keywords(rows)
     #get embeddings using all models for all keywords
     embeddings = [m.encode(unique_keywords, convert_to_tensor=True) for m in models]
@@ -144,6 +146,9 @@ for table in tables:
         doc = speech['tekst']
         #Use single model to get keybert candidates
         keybert_candidates =  kw_model.extract_keywords(doc, vectorizer= vectorizer_model, top_n = 10)
+        if not keybert_candidates:
+        #try again without the vocabulary
+            keybert_candidates =  kw_model.extract_keywords(doc, keyphrase_ngram_range = (1,3), stop_words = words, min_df = 1, top_n = 10)
         keybert_candidates = [x[0] for x in keybert_candidates]
         #Use multiple models for llm candidates and take mean of scores
         candidates = list(set(llm_candidates + keybert_candidates))
