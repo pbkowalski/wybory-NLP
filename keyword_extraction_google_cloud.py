@@ -78,7 +78,12 @@ def extract_keywords(tekst, llm_chain):
     if llm_chain is None:
         llm_chain = start_llm_chain()
     for doc in texts:
-        response = llm_chain.run(doc.page_content)
+        while(True):
+            try:
+                response = llm_chain.run(doc.page_content)
+                break
+            except Exception as e:
+                print(e)
         responses.append(response)
     return responses
 
